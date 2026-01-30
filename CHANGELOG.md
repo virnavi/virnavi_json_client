@@ -1,3 +1,10 @@
 ## 0.0.1
 
-* TODO: Describe initial release.
+* Initial release of virnavi_json_client
+* BaseHttpJsonObjectClient for standard REST API calls
+* BaseHttpJsonChunkObjectClient for streaming/chunked responses
+* Type-safe request/response handling with BaseJson abstraction
+* ApiResponse wrapper for structured error handling
+* FormData support via BaseFormData
+* Integrated logging with correlation IDs
+* Custom response transformers for flexible API formats
