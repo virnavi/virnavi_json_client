@@ -1,0 +1,35 @@
+name: example
+description: "A new Flutter project."
+publish_to: 'none'
+
+version: 0.0.1+1
+
+environment:
+  sdk: ^3.9.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  virnavi_json_client:
+    path: ../
+
+  cupertino_icons: ^1.0.8
+  equatable: ^2.0.8
+  flutter_bloc: ^9.1.1
+  path_provider: ^2.1.5
+  virnavi_common_sdk: ^0.0.1
+  virnavi_isar_e2m: ^0.0.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  build_runner: ^2.10.5
+  json_serializable: ^6.11.4
+
+flutter:
+
+  uses-material-design: true
+  generate: true
+
