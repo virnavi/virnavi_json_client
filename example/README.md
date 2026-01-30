@@ -47,9 +47,35 @@ We use `BaseJsonObjectApi` from `virnavi_json_client` to create a robust and typ
 - Flexible data transformation via `onTransformRawData`.
 - Standardized error handling through `Either<Failure, Success>`.
 
+#### Effective Usage: `BaseJsonObjectApi`
+To use the package effectively, you should create a project-specific abstract class that extends `BaseJsonObjectApi`. This class centralization:
+- **Base URL**: Define your API's root URL in one place.
+- **Default Headers**: Manage authentication tokens, platform info, and content types globally.
+- **Client Configuration**: Initialize the `BaseHttpJsonObjectClient` with project-specific options.
+- **Error Handling**: Standardize how API/Network errors are converted into your domain models.
+
+Example of a base class in this project:
+```dart
+abstract class BaseJsonObjectApi<Req extends BaseJson, Res> {
+  // ... common properties (path, method, client initialization)
+
+  Future<Either<ApiFailureResponse, Res>> apiCall({
+    // ... handles headers, path parameters, and the actual client call
+  }) async {
+    // ... implementation
+  }
+
+  Res convertResponse(Map<String, dynamic> json);
+  
+  // Standardized error conversion
+  ApiFailureResponse _convertErrorResponse(dynamic data) => ApiFailureResponse.fromJson(data);
+}
+```
+This pattern ensures that all your API implementations (like `PhotoListApi`) stay clean and focused only on their specific endpoint logic.
+
 ---
 
-## Technical Details
+## Example Details
 
 ### PhotoListApi
 Handles fetching a list of photos from the `/photos` endpoint.
@@ -57,8 +83,9 @@ Handles fetching a list of photos from the `/photos` endpoint.
 - **Key Feature**: Overrides `onTransformRawData` to handle APIs that return a top-level JSON list by wrapping it in a data object for consistent processing.
 
 ### PhotoCubit
-Manages the UI state for the photo list.
-- **Workflow**: Calls `getList()` on the Network layer and emits `PhotoLoading`, `PhotoLoaded`, or `PhotoError` states.
+Manages the UI state for the photo grid.
+- **Workflow**: Calls `getPhotos()` on the Network layer.
+- **State**: Emits a `PhotoState` containing `isLoading`, `photos` list, and optional `error` details.
 
 ---
 

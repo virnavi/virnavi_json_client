@@ -17,12 +17,127 @@ This package provides a robust abstraction layer over Dio, offering generic HTTP
 
 ## 🚀 Usage
 
-### 1. Define your Request Model
+### 1. Create the Base HTTP Client
+
+Create a project-specific abstract class to wrap `BaseHttpJsonObjectClient`. This gives you full control over configuration and enables features like **FormData** support and centralized error handling.
+
+Copy this base class into your project:
+
+```dart
+import 'dart:io';
+import 'package:virnavi_json_client/virnavi_json_client.dart';
+import 'package:dartz/dartz.dart'; 
+import 'package:flutter/foundation.dart';
+
+abstract class BaseApi<Req extends BaseJson, Res> {
+  final String path;
+  final ApiMethod method;
+  final bool sendToken;
+
+  BaseHttpJsonObjectClient? _client;
+
+  // 1. Configure the inner client
+  BaseHttpJsonObjectClient get client {
+    return _client ??= BaseHttpJsonObjectClient(
+      baseUrl: "https://api.example.com",
+      options: BaseHttpJsonObjectClientOptions(
+        connectTimeout: const Duration(seconds: 30),
+      ),
+      onTransformRawData: (data, response) {
+        final json = jsonDecode(data);
+        return json['data'] ?? json;
+      },
+    );
+  }
+
+  BaseApi({
+    required this.path,
+    required this.method,
+    this.sendToken = true,
+  });
+
+  // 2. Define default headers (Auth, Platform, etc.)
+  Future<Map<String, String?>> get defaultHeaders async {
+    final headers = <String, String?>{
+      'Content-Type': 'application/json',
+    };
+    if (sendToken) {
+     // headers['Authorization'] = 'Bearer $token'; 
+    }
+    return headers;
+  }
+
+  // 3. The main call method pattern
+  Future<Either<ApiFailureResponse, Res>> call({
+    required Req req,
+    Map<String, String?>? headers,
+    Map<String, dynamic>? pathParams,
+  }) async {
+    // A. Substitution for Path Params (e.g. /users/{id})
+    var newPath = path;
+    for (final key in pathParams?.keys.toList() ?? []) {
+      newPath = newPath.replaceAll('{$key}', pathParams?[key].toString() ?? '');
+    }
+
+    // B. Header Merging
+    final newHeaders = <String, String?>{};
+    newHeaders.addAll(await defaultHeaders);
+    if (method == ApiMethod.formData) {
+      newHeaders.addAll({'Content-Type': 'multipart/form-data'});
+    }
+    newHeaders.addAll(headers ?? {});
+
+    // C. FormData Handling
+    dynamic request = req;
+    if (method == ApiMethod.formData) {
+      if (req is! BaseFormData) {
+        throw Exception("For ApiMethod.formData, request must extend BaseFormData");
+      }
+      request = await (req as BaseFormData).toFormData();
+    }
+
+    // D. Execution
+    final m = method == ApiMethod.formData ? ApiMethod.post : method;
+    
+    final result = await client.call<dynamic, Res, ApiFailureResponse>(
+      path: newPath,
+      method: m,
+      pathParams: pathParams,
+      req: request,
+      headers: newHeaders,
+      convertSuccess: convertResponse,
+      convertError: _convertErrorResponse,
+    );
+
+    if (result.isSuccess) {
+      return Right(result.response as Res);
+    } else if (result.isError) {
+      return Left(result.errorResponse!);
+    }
+    return Left(_convertFromException(result.exception));
+  }
+
+  // Abstract methods for implementation
+  Res convertResponse(Map<String, dynamic> json);
+
+  ApiFailureResponse _convertErrorResponse(dynamic data) => 
+      ApiFailureResponse.fromJson(data);
+
+  ApiFailureResponse _convertFromException(Exception? e) {
+    if (e is DioException) {
+      // Handle timeouts, no internet, etc.
+      return ApiFailureResponse(status: 400, message: "Network Error: ${e.message}");
+    }
+    return ApiFailureResponse.fromException(e!);
+  }
+}
+```
+
+### 2. Define your Request Model
 
 Extend `BaseJson` to create type-safe request models with JSON serialization.
 
 ```dart
-import 'package:virnavi_json_client/virnavi_json_client.dart';
 import 'package:json_annotation/json_annotation.dart';
 
 part 'login_request.g.dart';
@@ -32,299 +147,175 @@ class LoginRequest extends BaseJson {
   final String email;
   final String password;
 
-  LoginRequest({
-    required this.email,
-    required this.password,
-  });
-
-  factory LoginRequest.fromJson(Map<String, dynamic> json) =>
-      _$LoginRequestFromJson(json);
+  LoginRequest({required this.email, required this.password});
 
   @override
   Map<String, dynamic> toJson() => _$LoginRequestToJson(this);
 }
 ```
 
-### 2. Define your Response Models
+### 3. Define your Response Models
 
-Create pure Dart models for success and error responses with JSON deserialization support.
+Create pure Dart models for success and error responses.
 
 ```dart
-part 'auth_models.g.dart';
-
-// Success Response
-@JsonSerializable(explicitToJson: true)
+@JsonSerializable()
 class LoginResponse {
   final String token;
-  final UserProfile user;
+  LoginResponse({required this.token});
 
-  LoginResponse({
-    required this.token,
-    required this.user,
-  });
-
-  factory LoginResponse.fromJson(Map<String, dynamic> json) =>
-      _$LoginResponseFromJson(json);
-
-  Map<String, dynamic> toJson() => _$LoginResponseToJson(this);
-}
-
-// Error Response
-@JsonSerializable()
-class ApiError {
-  final String message;
-  final int errorCode;
-
-  ApiError({
-    required this.message,
-    required this.errorCode,
-  });
-
-  factory ApiError.fromJson(Map<String, dynamic> json) =>
-      _$ApiErrorFromJson(json);
-
-  Map<String, dynamic> toJson() => _$ApiErrorToJson(this);
+  factory LoginResponse.fromJson(Map<String, dynamic> json) => _$LoginResponseFromJson(json);
 }
 ```
 
-### 3. Create the HTTP Client
+### 4. Create an API Service
 
-Initialize `BaseHttpJsonObjectClient` with your API base URL and configuration options.
+Extend your `BaseApi` to create a concrete service for a specific endpoint.
 
 ```dart
-import 'package:virnavi_json_client/virnavi_json_client.dart';
-import 'package:injectable/injectable.dart';
+class LoginApi extends BaseApi<LoginRequest, LoginResponse> {
+  LoginApi() : super(path: '/auth/login', method: ApiMethod.post);
 
-@singleton
-class ApiClient {
-  late final BaseHttpJsonObjectClient _client;
-
-  ApiClient() {
-    _client = BaseHttpJsonObjectClient(
-      baseUrl: 'https://api.example.com',
-      options: BaseHttpJsonObjectClientOptions(
-        connectTimeout: Duration(seconds: 30),
-        receiveTimeout: Duration(seconds: 30),
-        sendTimeout: Duration(seconds: 30),
-        responseType: ResponseType.json,
-      ),
-      // Transform raw response data (optional)
-      onTransformRawData: (data, response) {
-        // Handle non-standard API formats
-        final json = jsonDecode(data);
-        return json['data'] ?? json; // Unwrap 'data' field if needed
-      },
-      // Transform status code (optional)
-      onStatusCodeTransform: (data, response) {
-        // Use custom status codes from response body
-        return data['statusCode'] ?? response?.statusCode ?? -1;
-      },
-    );
-  }
-
-  Future<ApiResponse<LoginResponse, ApiError>> login({
-    required String email,
-    required String password,
-  }) async {
-    final request = LoginRequest(email: email, password: password);
-
-    return await _client.call<LoginRequest, LoginResponse, ApiError>(
-      path: '/auth/login',
-      method: ApiMethod.post,
-      req: request,
-      headers: {'Content-Type': 'application/json'},
-      convertSuccess: (json) => LoginResponse.fromJson(json),
-      convertError: (json) => ApiError.fromJson(json),
-      correlationId: 'login-${DateTime.now().millisecondsSinceEpoch}',
-    );
-  }
-
-  Future<ApiResponse<List<Product>, ApiError>> getProducts({
-    required int page,
-    required int limit,
-  }) async {
-    final request = GetProductsRequest(page: page, limit: limit);
-
-    return await _client.call<GetProductsRequest, List<Product>, ApiError>(
-      path: '/products',
-      method: ApiMethod.get,
-      req: request, // Will be converted to query parameters
-      headers: {'Authorization': 'Bearer $token'},
-      convertSuccess: (json) => (json['items'] as List)
-          .map((item) => Product.fromJson(item))
-          .toList(),
-      convertError: (json) => ApiError.fromJson(json),
-    );
+  @override
+  LoginResponse convertResponse(Map<String, dynamic> json) {
+    return LoginResponse.fromJson(json);
   }
 }
 ```
 
-### 4. Handle API Responses
+### 5. Call the API
 
-Use the `ApiResponse` wrapper to handle success, error, and exception states.
+Use your concrete API service to make requests.
 
 ```dart
 void main() async {
-  final apiClient = ApiClient();
+  final loginApi = LoginApi();
 
-  // Login example
-  final response = await apiClient.login(
-    email: 'user@example.com',
-    password: 'password123',
+  final result = await loginApi.call(
+    req: LoginRequest(email: 'user@example.com', password: 'password123'),
   );
 
-  if (response.isSuccess) {
-    print('Token: ${response.response?.token}');
-    print('User: ${response.response?.user.name}');
-  } else if (response.isError) {
-    print('API Error: ${response.errorResponse?.message}');
-    print('Error Code: ${response.errorResponse?.errorCode}');
-  } else if (response.isException) {
-    print('Exception: ${response.exception}');
-  }
-
-  // Alternative pattern matching
-  switch (response.code) {
-    case >= 200 && < 300:
-      // Success
-      break;
-    case 401:
-      // Unauthorized
-      break;
-    case 404:
-      // Not found
-      break;
-    default:
-      // Other errors
-  }
+  result.fold(
+    (failure) {
+      print('Error: ${failure.message}');
+    },
+    (response) {
+      print('Success! Token: ${response.token}');
+    },
+  );
 }
 ```
 
-### 5. Streaming API Calls
+### 6. Streaming API Calls
 
-For Server-Sent Events (SSE) or chunked responses, use `BaseHttpJsonChunkObjectClient`.
+For Server-Sent Events (SSE) or chunked responses, create a `BaseStreamApi` similar to `BaseApi`.
 
 ```dart
-@singleton
-class StreamApiClient {
-  late final BaseHttpJsonChunkObjectClient _streamClient;
+abstract class BaseStreamApi<Req extends BaseJson, Res> {
+  final String path;
+  final ApiMethod method;
+  final bool sendToken;
 
-  StreamApiClient() {
-    _streamClient = BaseHttpJsonChunkObjectClient(
-      baseUrl: 'https://api.example.com',
+  BaseHttpJsonChunkObjectClient? _client;
+
+  BaseHttpJsonChunkObjectClient get client {
+    return _client ??= BaseHttpJsonChunkObjectClient(
+      baseUrl: "https://api.example.com",
       options: BaseHttpJsonObjectClientOptions(
-        connectTimeout: Duration(seconds: 30),
-        receiveTimeout: Duration(minutes: 5), // Longer for streams
-        sendTimeout: Duration(seconds: 30),
+        connectTimeout: const Duration(seconds: 30),
+        receiveTimeout: const Duration(minutes: 5), // Longer timeout for streams
       ),
       onTransformRawData: (data, response) {
-        return jsonDecode(data);
-      },
+         // Transform chunk data if needed
+         return jsonDecode(data);
+      }
     );
   }
 
-  Stream<ApiResponse<ChatMessage, ApiError>> streamChatCompletion({
-    required String prompt,
-  }) {
-    final request = ChatRequest(prompt: prompt);
+  BaseStreamApi({
+    required this.path,
+    required this.method,
+    this.sendToken = true,
+  });
 
-    return _streamClient.call<ChatRequest, ChatMessage, ApiError>(
-      path: '/chat/stream',
-      method: ApiMethod.post,
-      req: request,
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $token',
-      },
-      convertSuccess: (json) => ChatMessage.fromJson(json),
-      convertError: (json) => ApiError.fromJson(json),
-      correlationId: 'chat-stream-${DateTime.now().millisecondsSinceEpoch}',
-    );
-  }
-}
-
-// Usage
-void main() async {
-  final streamClient = StreamApiClient();
-
-  await for (final response in streamClient.streamChatCompletion(
-    prompt: 'Tell me a joke',
-  )) {
-    if (response.isSuccess) {
-      print('Chunk: ${response.response?.content}');
-    } else if (response.isError) {
-      print('Error: ${response.errorResponse?.message}');
-      break;
-    } else if (response.isException) {
-      print('Exception: ${response.exception}');
-      break;
+  Stream<ApiResponse<Res, ApiError>> call({
+    required Req req,
+    Map<String, String?>? headers,
+  }) async* {
+    // Merge headers similar to BaseApi
+    final finalHeaders = <String, String?>{}; 
+    if (sendToken) {
+       // finalHeaders['Authorization'] = 'Bearer $token';
     }
+    finalHeaders.addAll(headers ?? {});
+
+    yield* client.call<Req, Res, ApiError>(
+      path: path,
+      method: method,
+      req: req,
+      headers: finalHeaders,
+      convertSuccess: (json) => LoginResponse.fromJson(json) as Res, // Adjust casting
+      convertError: (json) => ApiError.fromJson(json),
+    );
   }
 }
 ```
 
-### 6. File Upload with FormData
-
-Use `BaseFormData` for multipart file uploads.
+**Usage:**
 
 ```dart
-import 'dart:io';
+class ChatStreamApi extends BaseStreamApi<ChatRequest, ChatMessage> {
+  ChatStreamApi() : super(path: '/chat/stream', method: ApiMethod.post);
+}
 
+// In your code:
+final chatApi = ChatStreamApi();
+chatApi.call(req: request).listen((response) {
+  if (response.isSuccess) {
+    print("Chunk: ${response.response?.content}");
+  }
+});
+```
+
+### 7. File Upload with FormData
+
+Since your `BaseApi` (Step 1) handles `ApiMethod.formData` conversion logic automatically, uploading files is simple.
+
+1. **Define the Request** (must extend `BaseFormData`):
+```dart
 class UploadImageRequest extends BaseFormData {
-  final File imageFile;
-  final String caption;
-
-  UploadImageRequest({
-    required this.imageFile,
-    required this.caption,
-  });
+  final File file;
+  UploadImageRequest(this.file);
 
   @override
   Future<FormData> toFormData() async {
     return FormData.fromMap({
-      'image': await MultipartFile.fromFile(
-        imageFile.path,
-        filename: imageFile.path.split('/').last,
-      ),
-      'caption': caption,
+      'file': await MultipartFile.fromFile(file.path),
     });
   }
 
   @override
-  Map<String, dynamic> toJson() {
-    return {}; // Not used for FormData
-  }
-}
-
-class ApiClient {
-  // ... previous code ...
-
-  Future<ApiResponse<UploadResponse, ApiError>> uploadImage({
-    required File imageFile,
-    required String caption,
-  }) async {
-    final request = UploadImageRequest(
-      imageFile: imageFile,
-      caption: caption,
-    );
-
-    final formData = await request.toFormData();
-
-    return await _client.call<FormData, UploadResponse, ApiError>(
-      path: '/upload/image',
-      method: ApiMethod.post,
-      req: formData,
-      headers: {
-        'Authorization': 'Bearer $token',
-      },
-      convertSuccess: (json) => UploadResponse.fromJson(json),
-      convertError: (json) => ApiError.fromJson(json),
-    );
-  }
+  Map<String, dynamic> toJson() => {}; // unused
 }
 ```
 
-### 7. Path Parameters
+2. **Define the API**:
+```dart
+class UploadApi extends BaseApi<UploadImageRequest, UploadResponse> {
+  UploadApi() : super(path: '/upload', method: ApiMethod.formData);
+
+  @override
+  UploadResponse convertResponse(Map<String, dynamic> json) => 
+      UploadResponse.fromJson(json);
+}
+```
+
+3. **Call it**:
+```dart
+await UploadApi().call(req: UploadImageRequest(myFile));
+```
+
+### 8. Path Parameters
 
 Support for dynamic path parameters using placeholders.
 
@@ -494,16 +485,6 @@ final client = BaseHttpJsonObjectClient(
   },
 );
 ```
-
-## 🎯 Best Practices
-
-1. **Type Safety**: Always define explicit types for your request/response models
-2. **Error Handling**: Handle all three states: success, error, and exception
-3. **Logging**: Use correlation IDs to trace requests across your application
-4. **Timeouts**: Configure appropriate timeouts based on your API's response time
-5. **Null Safety**: Use null-aware operators when accessing response data
-6. **Dependency Injection**: Register clients as singletons in your DI container
-7. **Testing**: Mock `BaseHttpJsonObjectClient` for unit tests
 
 ## 🧑‍💻 Contributors
 
