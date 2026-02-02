@@ -1,3 +1,3 @@
 class ApiEndpoints {
-  static const String photos = "/albums/1/photos";
+  static const String posts = "/posts";
 }

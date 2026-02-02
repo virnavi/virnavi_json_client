@@ -1,6 +1,6 @@
-import 'package:example/data/api/photo/photo_list_api.dart';
-import 'package:example/data/network/photo_network_impl.dart';
-import 'package:example/ui/home/cubits/note/photo_cubit.dart';
+import 'package:example/data/api/photo/post_list_api.dart';
+import 'package:example/data/network/post_network_impl.dart';
+import 'package:example/ui/home/cubits/note/post_cubit.dart';
 import 'package:example/ui/home/home_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -19,7 +19,7 @@ class MyApp extends StatelessWidget {
     return MultiBlocProvider(
       providers: [
         BlocProvider(
-          create: (context) => PhotoCubit(PhotoNetworkImpl(PhotoListApi())),
+          create: (context) => PostCubit(PostNetworkImpl(PostListApi())),
         ),
       ],
       child: MaterialApp(

@@ -1,3 +1,3 @@
 import 'package:equatable/equatable.dart';
 
-part 'photo_model.dart';
+part 'post_model.dart';
