@@ -1,4 +1,4 @@
-import 'package:example/ui/home/widgets/photo_grid.dart';
+import 'package:example/ui/home/widgets/post_grid.dart';
 import 'package:flutter/material.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -11,6 +11,9 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
-    return Scaffold(appBar: AppBar(), body: PhotoGrid());
+    return Scaffold(
+      appBar: AppBar(title: Text("Posts")),
+      body: Expanded(child: PostGrid()),
+    );
   }
 }

@@ -2,29 +2,25 @@ import 'package:equatable/equatable.dart';
 import 'package:example/data/api/base/model/models.dart';
 import 'package:example/domain/models/models.dart';
 
-class PhotoState extends Equatable {
+class PostState extends Equatable {
   final bool isLoading;
-  final List<PhotoModel> photos;
+  final List<PostModel> posts;
   final FailureModel? error;
 
-  const PhotoState({
-    this.isLoading = false,
-    this.photos = const [],
-    this.error,
-  });
+  const PostState({this.isLoading = false, this.posts = const [], this.error});
 
-  PhotoState copyWith({
+  PostState copyWith({
     bool? isLoading,
-    List<PhotoModel>? photos,
+    List<PostModel>? posts,
     FailureModel? error,
   }) {
-    return PhotoState(
+    return PostState(
       isLoading: isLoading ?? this.isLoading,
-      photos: photos ?? this.photos,
+      posts: posts ?? this.posts,
       error: error ?? this.error,
     );
   }
 
   @override
-  List<Object?> get props => [isLoading, photos, error];
+  List<Object?> get props => [isLoading, posts, error];
 }
