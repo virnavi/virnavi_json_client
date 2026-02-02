@@ -4,7 +4,7 @@ A modern, production-ready example demonstrating how to use `virnavi_json_client
 
 ## Project Overview
 
-This example demonstrates a photo discovery application that fetches data from an external API. It showcases:
+This example demonstrates a post discovery application that fetches data from an external API. It showcases:
 - Efficient API handling with `virnavi_json_client`.
 - Error handling and data transformation.
 
@@ -18,7 +18,7 @@ lib/
 │   ├── api/            # API definitions and models
 │   │   ├── base/       # Base API and response models
 │   │   ├── models/     # API-specific data models
-│   │   └── photo/      # Photo feature API implementations
+│   │   └── post/      # Post feature API implementations
 │   └── network/        # Concrete network implementations
 ├── domain/             # Business logic layer (Framework independent)
 │   ├── models/         # Pure Dart domain models
@@ -37,8 +37,8 @@ lib/
 
 The project follows a basic **Clean Architecture** pattern to decouple the UI from the network implementation.
 
-1.  **Domain Layer**: Contains the core logic. Models (`PhotoModel`) and Network interfaces (`PhotoNetwork`) reside here. It remains agnostic of the underlying HTTP client.
-2.  **Data Layer**: Implements the Domain interfaces. `PhotoNetworkImpl` uses `PhotoListApi` (extending `BaseJsonObjectApi`) to handle the actual communication with the API.
+1.  **Domain Layer**: Contains the core logic. Models (`PostModel`) and Network interfaces (`PostNetwork`) reside here. It remains agnostic of the underlying HTTP client.
+2.  **Data Layer**: Implements the Domain interfaces. `PostNetworkImpl` uses `PostListApi` (extending `BaseJsonObjectApi`) to handle the actual communication with the API.
 3.  **Presentation Layer (UI)**: Uses Cubits to interact with the Network layer. The UI observes state changes and updates reactively based on API responses.
 
 ### API Integration Pattern
@@ -71,21 +71,21 @@ abstract class BaseJsonObjectApi<Req extends BaseJson, Res> {
   ApiFailureResponse _convertErrorResponse(dynamic data) => ApiFailureResponse.fromJson(data);
 }
 ```
-This pattern ensures that all your API implementations (like `PhotoListApi`) stay clean and focused only on their specific endpoint logic.
+This pattern ensures that all your API implementations (like `PostListApi`) stay clean and focused only on their specific endpoint logic.
 
 ---
 
 ## Example Details
 
-### PhotoListApi
-Handles fetching a list of photos from the `/photos` endpoint.
-- **Implementation**: Extends `BaseJsonObjectApi<EmptyDataModel, PhotoListResponse>`.
+### PostListApi
+Handles fetching a list of posts from the `/posts` endpoint.
+- **Implementation**: Extends `BaseJsonObjectApi<EmptyDataModel, PostListResponse>`.
 - **Key Feature**: Overrides `onTransformRawData` to handle APIs that return a top-level JSON list by wrapping it in a data object for consistent processing.
 
-### PhotoCubit
-Manages the UI state for the photo grid.
-- **Workflow**: Calls `getPhotos()` on the Network layer.
-- **State**: Emits a `PhotoState` containing `isLoading`, `photos` list, and optional `error` details.
+### PostCubit
+Manages the UI state for the post grid.
+- **Workflow**: Calls `getPosts()` on the Network layer.
+- **State**: Emits a `PostState` containing `isLoading`, `posts` list, and optional `error` details.
 
 ---
 
