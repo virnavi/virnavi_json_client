@@ -37,8 +37,6 @@ class BaseHttpJsonObjectClient {
     required ErrorRes Function(Map<String, dynamic> data) convertError,
     String? correlationId,
   }) async {
-    BaseOptions();
-
     try {
       final response = await _callMethod<Data, Res, ErrorRes>(
         path: path,
@@ -56,12 +54,6 @@ class BaseHttpJsonObjectClient {
         correlationId: correlationId,
       );
       if (response.data != null) {
-        Logger.shared.log(
-          'res: ${response.data}',
-          tag: tag,
-          correlationId: correlationId,
-        );
-
         if (200 <= statusCode && statusCode < 300) {
           return ApiResponse<Res, ErrorRes>(
             code: statusCode,
@@ -76,17 +68,17 @@ class BaseHttpJsonObjectClient {
       }
     } on DioException catch (e) {
       log('$correlationId    exception: ${e.toString()}');
-      print(e);
       if (e.response != null && e.response?.data != null) {
-        final res = onTransformRawData!.call(e.response!.data, e.response);
+        final rawData = e.response!.data;
+        final res =
+            onTransformRawData != null
+                ? onTransformRawData!.call(rawData.toString(), e.response)
+                : (rawData is Map<String, dynamic>
+                    ? rawData
+                    : json.decode(rawData.toString()) as Map<String, dynamic>);
 
         Logger.shared.log(
           'error status code: ${e.response?.statusCode ?? -1}',
-          tag: tag,
-          correlationId: correlationId,
-        );
-        Logger.shared.log(
-          'error res: ${e.response?.data}',
           tag: tag,
           correlationId: correlationId,
         );
@@ -97,7 +89,7 @@ class BaseHttpJsonObjectClient {
       } else {
         return ApiResponse<Res, ErrorRes>(code: -1, exception: e);
       }
-    } on Exception catch (e, _) {
+    } on Exception catch (e) {
       log('$correlationId    exception: ${e.toString()}');
       return ApiResponse<Res, ErrorRes>(code: -1, exception: e);
     }
@@ -118,9 +110,9 @@ class BaseHttpJsonObjectClient {
     String? correlationId,
   }) {
     var newPath = path;
-    if (pathParams != null && headers != null) {
-      for (final key in headers.keys) {
-        newPath = newPath.replaceAll('{$key}', headers[key]!);
+    if (pathParams != null) {
+      for (final key in pathParams.keys) {
+        newPath = newPath.replaceAll('{$key}', pathParams[key].toString());
       }
     }
 
@@ -163,21 +155,20 @@ class BaseHttpJsonObjectClient {
       tag: tag,
       correlationId: correlationId,
     );
-    if (method == ApiMethod.post) {
+    if (method == ApiMethod.post || method == ApiMethod.formData) {
       return _post(path: newPath, headers: headers, req: req);
     } else if (method == ApiMethod.put) {
       return _put(path: newPath, headers: headers, req: req);
+    } else if (method == ApiMethod.patch) {
+      return _patch(path: newPath, headers: headers, req: req);
     } else if (method == ApiMethod.delete) {
       return _delete(path: newPath, headers: headers, req: req);
     }
-    if (req is BaseJson) {
-      return _get(path: newPath, headers: headers, req: req.toJson());
-    }
-    throw Exception("Request Data Must Extend BaseJson Class for Get Method !");
+    final queryParams = (req is BaseJson) ? req.toJson() : null;
+    return _get(path: newPath, headers: headers, req: queryParams);
   }
 
-  Future<Response<Map<String, dynamic>>>
-  _get<Data extends BaseJson, Res, ErrorRes>({
+  Future<Response<Map<String, dynamic>>> _get({
     required String path,
     Map<String, dynamic>? headers,
     Map<String, dynamic>? req,
@@ -185,7 +176,7 @@ class BaseHttpJsonObjectClient {
     return convertRawResponse(
       await client.get<String>(
         baseUrl + path,
-        queryParameters: req ?? {},
+        queryParameters: req,
         options: Options(headers: headers),
       ),
     );
@@ -211,6 +202,20 @@ class BaseHttpJsonObjectClient {
   }) async {
     return convertRawResponse(
       await client.put<String>(
+        baseUrl + path,
+        data: req,
+        options: Options(headers: headers),
+      ),
+    );
+  }
+
+  Future<Response<Map<String, dynamic>>> _patch<Data, Res, ErrorRes>({
+    required String path,
+    Map<String, dynamic>? headers,
+    Data? req,
+  }) async {
+    return convertRawResponse(
+      await client.patch<String>(
         baseUrl + path,
         data: req,
         options: Options(headers: headers),

@@ -1,0 +1,5 @@
+graphify-out/
+build/
+.vscode/
+.claude/
+.idea/

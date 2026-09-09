@@ -89,7 +89,7 @@ class BaseHttpJsonChunkObjectClient {
               errorResponse: convertError(jsonData),
             );
           }
-        } catch (e, _) {
+        } catch (e) {
           yield ApiResponse<Res, ErrorRes>(
             code: -1,
             exception: Exception('Failed to parse chunk: $e'),
@@ -98,7 +98,13 @@ class BaseHttpJsonChunkObjectClient {
       }
     } on DioException catch (e) {
       if (e.response != null && e.response?.data != null) {
-        final res = onTransformRawData!.call(e.response!.data, e.response);
+        final rawData = e.response!.data;
+        final res =
+            onTransformRawData != null
+                ? onTransformRawData!.call(rawData.toString(), e.response)
+                : (rawData is Map<String, dynamic>
+                    ? rawData
+                    : json.decode(rawData.toString()) as Map<String, dynamic>);
 
         yield ApiResponse<Res, ErrorRes>(
           code: e.response?.statusCode ?? -1,
@@ -110,7 +116,7 @@ class BaseHttpJsonChunkObjectClient {
           exception: e,
         );
       }
-    } on Exception catch (e, _) {
+    } on Exception catch (e) {
       log('$correlationId    exception: ${e.toString()}');
       yield ApiResponse<Res, ErrorRes>(code: -1, exception: e);
     }
@@ -125,9 +131,9 @@ class BaseHttpJsonChunkObjectClient {
     String? correlationId,
   }) {
     var newPath = path;
-    if (pathParams != null && headers != null) {
-      for (final key in headers.keys) {
-        newPath = newPath.replaceAll('{$key}', headers[key]!);
+    if (pathParams != null) {
+      for (final key in pathParams.keys) {
+        newPath = newPath.replaceAll('{$key}', pathParams[key].toString());
       }
     }
 
@@ -139,7 +145,7 @@ class BaseHttpJsonChunkObjectClient {
       responseType: ResponseType.stream,
     );
 
-    if (method == ApiMethod.post) {
+    if (method == ApiMethod.post || method == ApiMethod.formData) {
       return client.post<ResponseBody>(
         baseUrl + newPath,
         data: req,
@@ -151,6 +157,12 @@ class BaseHttpJsonChunkObjectClient {
         data: req,
         options: options,
       );
+    } else if (method == ApiMethod.patch) {
+      return client.patch<ResponseBody>(
+        baseUrl + newPath,
+        data: req,
+        options: options,
+      );
     } else if (method == ApiMethod.delete) {
       return client.delete<ResponseBody>(
         baseUrl + newPath,
@@ -158,13 +170,11 @@ class BaseHttpJsonChunkObjectClient {
         options: options,
       );
     }
-    if (req is BaseJson) {
-      return client.get<ResponseBody>(
-        baseUrl + newPath,
-        queryParameters: req.toJson(),
-        options: options,
-      );
-    }
-    throw Exception("Request Data Must Extend BaseJson Class for Get Method !");
+    final queryParams = (req is BaseJson) ? req.toJson() : null;
+    return client.get<ResponseBody>(
+      baseUrl + newPath,
+      queryParameters: queryParams,
+      options: options,
+    );
   }
 }
