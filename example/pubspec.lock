@@ -694,7 +694,7 @@ packages:
       path: ".."
       relative: true
     source: path
-    version: "0.0.1"
+    version: "0.0.2"
   vm_service:
     dependency: transitive
     description:
@@ -752,5 +752,5 @@ packages:
     source: hosted
     version: "3.1.3"
 sdks:
-  dart: ">=3.11.0-0 <4.0.0"
-  flutter: ">=3.38.4"
+  dart: ">=3.11.1 <4.0.0"
+  flutter: ">=3.41.4"

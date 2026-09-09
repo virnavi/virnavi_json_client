@@ -62,21 +62,15 @@ class BaseHttpJsonObjectClient {
         } else {
           return ApiResponse<Res, ErrorRes>(
             code: statusCode,
-            errorResponse: convertError(response.data as Map<String, dynamic>),
+            errorResponse: convertError(response.data ?? {}),
           );
         }
       }
     } on DioException catch (e) {
       log('$correlationId    exception: ${e.toString()}');
-      if (e.response != null && e.response?.data != null) {
-        final rawData = e.response!.data;
-        final res =
-            onTransformRawData != null
-                ? onTransformRawData!.call(rawData.toString(), e.response)
-                : (rawData is Map<String, dynamic>
-                    ? rawData
-                    : json.decode(rawData.toString()) as Map<String, dynamic>);
-
+      final rawData = e.response?.data;
+      final errorBody = _tryDecodeErrorBody(rawData, e.response, onTransformRawData);
+      if (errorBody != null) {
         Logger.shared.log(
           'error status code: ${e.response?.statusCode ?? -1}',
           tag: tag,
@@ -84,7 +78,7 @@ class BaseHttpJsonObjectClient {
         );
         return ApiResponse<Res, ErrorRes>(
           code: e.response?.statusCode ?? -1,
-          errorResponse: convertError(res),
+          errorResponse: convertError(errorBody),
         );
       } else {
         return ApiResponse<Res, ErrorRes>(code: -1, exception: e);
@@ -240,7 +234,7 @@ class BaseHttpJsonObjectClient {
   Response<Map<String, dynamic>> convertRawResponse(Response<String> res) {
     final data =
         onTransformRawData?.call(res.data ?? '', res) ??
-        json.decode(res.data ?? '{}');
+        _decodeJsonObject(res.data ?? '');
     return Response(
       requestOptions: res.requestOptions,
       statusCode: onStatusCodeTransform?.call(data, res) ?? res.statusCode,
@@ -252,4 +246,52 @@ class BaseHttpJsonObjectClient {
       data: data,
     );
   }
+}
+
+/// Decodes a raw response body into a JSON object.
+///
+/// An empty (or whitespace-only) body decodes to an empty map so that a
+/// legitimate `204 No Content` or empty `200` response is not treated as a
+/// failure. A body that parses to something other than a JSON object throws a
+/// [FormatException] — a *catchable* [Exception] — instead of letting a
+/// `TypeError` escape when the value is later used as a `Map`.
+Map<String, dynamic> _decodeJsonObject(String raw) {
+  if (raw.trim().isEmpty) return <String, dynamic>{};
+  return _asJsonObject(json.decode(raw));
+}
+
+/// Coerces an already-decoded JSON value into a `Map<String, dynamic>`,
+/// throwing a [FormatException] if it is not a JSON object.
+Map<String, dynamic> _asJsonObject(dynamic decoded) {
+  if (decoded is Map<String, dynamic>) return decoded;
+  if (decoded is Map) {
+    return decoded.map((key, value) => MapEntry(key.toString(), value));
+  }
+  throw FormatException(
+    'Expected a JSON object but received ${decoded.runtimeType}',
+  );
+}
+
+/// Best-effort decode of a Dio error-response body into a JSON object.
+///
+/// Returns `null` (rather than throwing) when the body is absent or cannot be
+/// interpreted as a JSON object, so the caller can fall back to reporting the
+/// underlying exception. Never throws — safe to call from inside a `catch`.
+Map<String, dynamic>? _tryDecodeErrorBody(
+  dynamic rawData,
+  Response? response,
+  Map<String, dynamic> Function(String data, Response? response)?
+  onTransformRawData,
+) {
+  if (rawData == null) return null;
+  try {
+    if (onTransformRawData != null) {
+      return onTransformRawData(rawData.toString(), response);
+    }
+    if (rawData is String) return _decodeJsonObject(rawData);
+    if (rawData is Map) return _asJsonObject(rawData);
+  } catch (_) {
+    return null;
+  }
+  return null;
 }

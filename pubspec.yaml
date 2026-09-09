@@ -5,8 +5,8 @@ homepage: https://www.virnavi.com
 repository: https://github.com/virnavi/virnavi_json_client
 
 environment:
-  sdk: ^3.9.2
-  flutter: ">=3.0.0"
+  sdk: ">=3.11.1 <4.0.0"
+  flutter: ">=3.41.4"
 
 dependencies:
   flutter:
