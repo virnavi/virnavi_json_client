@@ -7,7 +7,7 @@ class ApiResponse<R, ER> {
 
   bool get isSuccess => 200 <= code && code < 300;
   bool get isError => 0 < code && !isSuccess;
-  bool get isException => 0 == code;
+  bool get isException => code < 0;
 
   ApiResponse({
     required this.code,

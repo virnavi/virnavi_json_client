@@ -8,6 +8,7 @@
 .buildlog/
 .history
 .svn/
+.claude/
 migrate_working_dir/
 
 # IntelliJ related
@@ -27,3 +28,6 @@ migrate_working_dir/
 **/doc/api/
 .dart_tool/
 build/
+
+# graphify knowledge graph (generated)
+graphify-out/
