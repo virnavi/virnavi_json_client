@@ -66,10 +66,13 @@ void main() {
   });
 
   group('BaseFormData', () {
-    test('toJson returns empty map by default', () async {
-      // BaseFormData is abstract — verify contract via a minimal anonymous subclass equivalent
-      // (Just confirm the abstract class exists and has the right signature via the concrete client.)
-      expect(true, isTrue); // placeholder; real coverage via integration tests
+    test('toJson returns empty map by default', () {
+      final form = _Upload();
+      expect(form.toJson(), equals(<String, dynamic>{}));
+    });
+
+    test('is a BaseJson', () {
+      expect(_Upload(), isA<BaseJson>());
     });
   });
 
@@ -90,4 +93,54 @@ void main() {
       expect(opts.receiveTimeout, equals(const Duration(seconds: 60)));
     });
   });
+
+  group('convertRawResponse', () {
+    final client = BaseHttpJsonObjectClient(
+      baseUrl: '',
+      options: BaseHttpJsonObjectClientOptions(),
+    );
+
+    Response<String> raw(String? body, {int status = 200}) => Response<String>(
+      requestOptions: RequestOptions(path: '/'),
+      statusCode: status,
+      data: body,
+    );
+
+    test('decodes a JSON object body', () {
+      expect(client.convertRawResponse(raw('{"a":1}')).data, {'a': 1});
+    });
+
+    test('empty body decodes to an empty map (no crash on 204)', () {
+      expect(client.convertRawResponse(raw('')).data, isEmpty);
+      expect(client.convertRawResponse(raw(null)).data, isEmpty);
+      expect(client.convertRawResponse(raw('   ')).data, isEmpty);
+    });
+
+    test('non-object JSON throws a catchable FormatException, not a TypeError', () {
+      expect(() => client.convertRawResponse(raw('[1,2,3]')),
+          throwsA(isA<FormatException>()));
+      expect(() => client.convertRawResponse(raw('42')),
+          throwsA(isA<FormatException>()));
+    });
+
+    test('malformed JSON throws a catchable FormatException', () {
+      expect(() => client.convertRawResponse(raw('{not json')),
+          throwsA(isA<FormatException>()));
+    });
+
+    test('onTransformRawData takes precedence over default decoding', () {
+      final transforming = BaseHttpJsonObjectClient(
+        baseUrl: '',
+        options: BaseHttpJsonObjectClientOptions(),
+        onTransformRawData: (data, response) => {'wrapped': data},
+      );
+      expect(transforming.convertRawResponse(raw('anything')).data,
+          {'wrapped': 'anything'});
+    });
+  });
+}
+
+class _Upload extends BaseFormData {
+  @override
+  Future<FormData> toFormData() async => FormData();
 }

@@ -60,55 +60,84 @@ class BaseHttpJsonChunkObjectClient {
         return;
       }
 
-      await for (final chunk in responseStream) {
-        try {
-          final chunkStr = utf8.decode(chunk);
-          final jsonData =
-              onTransformRawData?.call(chunkStr, response) ??
-              json.decode(chunkStr) as Map<String, dynamic>;
+      // Decode the byte stream through utf8.decoder so multi-byte characters
+      // that straddle a chunk boundary are buffered internally instead of
+      // throwing. `buffer` then accumulates text across emissions so a JSON
+      // object split across chunks is parsed once it is complete.
+      final buffer = StringBuffer();
+      await for (final piece
+          in responseStream.cast<List<int>>().transform(utf8.decoder)) {
+        buffer.write(piece);
+        final text = buffer.toString();
 
-          Logger.shared.log(
-            'chunk received: $jsonData',
-            tag: tag,
-            correlationId: correlationId,
-          );
-
-          final statusCode =
-              onStatusCodeTransform?.call(jsonData, response) ??
-              response.statusCode ??
-              0;
-
-          if (_isSuccess(statusCode)) {
+        Map<String, dynamic> jsonData;
+        if (onTransformRawData != null) {
+          // A custom transformer owns framing/parsing; hand it the text and
+          // treat any failure as a parse error rather than crashing.
+          try {
+            jsonData = onTransformRawData!.call(text, response);
+          } catch (e) {
+            buffer.clear();
             yield ApiResponse<Res, ErrorRes>(
-              code: statusCode,
-              response: convertSuccess(jsonData),
+              code: -1,
+              exception: Exception('Failed to parse chunk: $e'),
             );
-          } else {
-            yield ApiResponse<Res, ErrorRes>(
-              code: statusCode,
-              errorResponse: convertError(jsonData),
-            );
+            continue;
           }
-        } catch (e) {
+        } else {
+          dynamic decoded;
+          try {
+            decoded = json.decode(text);
+          } on FormatException {
+            // Incomplete JSON so far — wait for more chunks to arrive.
+            continue;
+          }
+          try {
+            jsonData = _asJsonObject(decoded);
+          } catch (e) {
+            buffer.clear();
+            yield ApiResponse<Res, ErrorRes>(
+              code: -1,
+              exception: Exception('Failed to parse chunk: $e'),
+            );
+            continue;
+          }
+        }
+        buffer.clear();
+
+        Logger.shared.log(
+          'chunk received: $jsonData',
+          tag: tag,
+          correlationId: correlationId,
+        );
+
+        final statusCode =
+            onStatusCodeTransform?.call(jsonData, response) ??
+            response.statusCode ??
+            0;
+
+        if (_isSuccess(statusCode)) {
           yield ApiResponse<Res, ErrorRes>(
-            code: -1,
-            exception: Exception('Failed to parse chunk: $e'),
+            code: statusCode,
+            response: convertSuccess(jsonData),
+          );
+        } else {
+          yield ApiResponse<Res, ErrorRes>(
+            code: statusCode,
+            errorResponse: convertError(jsonData),
           );
         }
       }
     } on DioException catch (e) {
-      if (e.response != null && e.response?.data != null) {
-        final rawData = e.response!.data;
-        final res =
-            onTransformRawData != null
-                ? onTransformRawData!.call(rawData.toString(), e.response)
-                : (rawData is Map<String, dynamic>
-                    ? rawData
-                    : json.decode(rawData.toString()) as Map<String, dynamic>);
-
+      final errorBody = _tryDecodeErrorBody(
+        e.response?.data,
+        e.response,
+        onTransformRawData,
+      );
+      if (errorBody != null) {
         yield ApiResponse<Res, ErrorRes>(
           code: e.response?.statusCode ?? -1,
-          errorResponse: convertError(res),
+          errorResponse: convertError(errorBody),
         );
       } else {
         yield ApiResponse<Res, ErrorRes>(
